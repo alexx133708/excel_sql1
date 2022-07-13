@@ -58,7 +58,6 @@ def csv_from_excel(work_folder, csv_name):
         for row in tqdm.tqdm(data.splitlines()):
             row = row.replace('"', '').replace('\n', '')
             row = list(row.split(','))
-
             if row[5] == '':
                 row[5] = randint(50, 100)
             if row[6] == '':
@@ -139,8 +138,60 @@ def csv_from_excel(work_folder, csv_name):
 
     return f'{work_folder}{csv_name}.csv'
 
+
+def homework1(csv_file):
+    product_list = {'':0}
+    product_list_help = {'':0}
+    count = 1
+    summa = 0
+    with open(csv_file, mode="r", encoding='utf-8') as r_file:
+        data = str(r_file.read())
+        csv_writer = csv.writer(r_file, delimiter=",", lineterminator="\r")
+        for row in data.splitlines():
+            row = row.replace('"', '').replace('\n', '')
+            row = list(row.split(','))
+            for product, price in product_list_help.items():
+                if product != row[3]:
+                    product_list.update({row[3]:row[7]})
+            product_list_help = product_list.copy()
+        product_list.pop('')
+        for product, price in product_list.items():
+            summa = summa + float(price)
+            count += 1
+        print('======================================\nСредняя цена товаров:')
+        print(f'\t{round(summa/count, 2)}')
+
+
+def homework2(csv_file):
+    suppliers_products = {'':()}
+    suppliers_products_help = {'':()}
+    max = 0
+    with open(csv_file, mode="r", encoding='utf-8') as r_file:
+        data = str(r_file.read())
+        csv_writer = csv.writer(r_file, delimiter=",", lineterminator="\r")
+        for row in data.splitlines():
+            row = row.replace('"', '').replace('\n', '')
+            row = list(row.split(','))
+            if row[4] in suppliers_products.keys():
+                suppliers_products.update({row[4]: suppliers_products.get(row[4]) + (row[3],)})
+            if not row[4] in suppliers_products.keys():
+                suppliers_products.update({row[4]: (row[3],)})
+            suppliers_products_help = suppliers_products.copy()
+        suppliers_products.pop('')
+        print('======================================')
+        print('Производитель с самым большим аасортиментом: ')
+        for supplier, products in suppliers_products.items():
+            if max < len(products):
+                max = len(products)
+        for supplier, products in suppliers_products.items():
+            if len(products) == max:
+                print(f'\t{supplier} -> {max} товаров')
+
+
 date = datetime.datetime.now()
 datestr = date.strftime("%Y%m%d%H%M%S")
 clear_folder(work_folder)
 csv_name = get_csv(xlsx_file, work_folder)
 csv_namev = csv_from_excel(work_folder, csv_name)
+homework1(csv_namev)
+homework2(csv_namev)
