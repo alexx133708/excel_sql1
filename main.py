@@ -179,7 +179,7 @@ def homework2(csv_file):
             suppliers_products_help = suppliers_products.copy()
         suppliers_products.pop('')
         print('======================================')
-        print('Производитель с самым большим аасортиментом: ')
+        print('Производитель с самым большим асcортиментом: ')
         for supplier, products in suppliers_products.items():
             if max < len(products):
                 max = len(products)
