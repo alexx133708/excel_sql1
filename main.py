@@ -1,4 +1,3 @@
-
 import csv
 import datetime
 import os
@@ -9,6 +8,8 @@ import pyodbc
 import tqdm
 import time
 from time import sleep
+import logging
+
 
 xlsx_file = "C:\\bigdata\\original\\bigdata2.xlsx"
 work_folder = "C:\\bigdata\\csv_files\\"
@@ -31,7 +32,7 @@ def menu():
             dataset_range = 1000000
             break
         elif dataset_range == '3':
-            dataset_range = 2000000
+            dataset_range = 20000000
             break
         else:
             print("\033[31m {}".format('Просто 1, 2 или 3. Что сложного?)'))
@@ -52,62 +53,94 @@ def menu():
     return {'dataset_range': dataset_range, 'year_range': year_range}
 
 
-def connect():
-    conn = pyodbc.connect('Driver={SQL Server};'
-                          'Server=ASUSALEX\SQLEXPRESS;'
-                          'Database=python_sql;'
-                          'Trusted_Connection=yes;')
-    conn.commit()
-    return conn
-
-
-def drop_table(table_name, cursor):
-    cursor.execute(f"drop table {table_name}")
-    print("данные удалены")
-    cursor.commit()
-
-
 def clear_folder(path):
-    print("чищу каталог")
+    print("\033[37m {}".format("чищу каталог"))
     for root, dirs, files in os.walk(path, topdown=False):
         for name in files:
             os.remove(os.path.join(root, name))
 
 
-def get_csv(xlsx_file, work_folder):
+def get_csv(xlsx_file, work_folder, logfile):
     date = datetime.datetime.now()
     csv_name = date.strftime("%Y%m%d%H%M%S")
-    print("открываю xlsx")
+    log.info("open xlsx")
+    print("\033[37m {}".format("открываю xlsx"))
     data_xls = pd.read_excel(xlsx_file, sheet_name='GroceryMar Pyat chips energ 10-')
+    log.info("xlsx in csv")
     print("xlsx в csv")
-    data_xls.to_csv(f'{work_folder}{csv_name}.csv', encoding='utf-8', index=False, header = False)
+    data_xls.to_csv(f'{work_folder}{csv_name}.csv', encoding='utf-8', index=False, header = False, sep= ';')
     return csv_name
 
 
+def generate_csv(menu_results, csv_name, work_folder):
+    print("считаю")
+    log.info("calculating")
+    with open(f'{work_folder}{csv_name}.csv', encoding='utf-8') as csvf:
+        data = str(csvf.read())
+    with open(f'{work_folder}{csv_name}.csv',mode="w", encoding='utf-8') as csvf:
+        csv_writer = csv.writer(csvf, delimiter=";", lineterminator="\r")
+        if menu_results["dataset_range"] == 1000:
+            is_write = 0
+            for row in tqdm.tqdm(data.splitlines()):
+                row = list(row.split(';'))
+                if is_write % 1000 == 0:
+                    csv_writer.writerow(row)
+                is_write += 1
+        if menu_results["dataset_range"] == 1000000:
+            for row in tqdm.tqdm(data.splitlines()):
+                row = list(row.split(';'))
+                csv_writer.writerow(row)
+        if menu_results["dataset_range"] == 20000000:
+            data = data * 20
+            for i, row in enumerate(tqdm.tqdm(data.splitlines())):
+                print(f'{i}- {row}')
+                row = list(row.split(';'))
+                csv_writer.writerow(row)
+
+
 def csv_from_excel(work_folder, csv_name):
+    log.info("cleaning csv")
     print("шлифую csv")
-    products_sums_list = {tuple(['','']):''}
-    products_sums_list_help = {tuple(['','']):''}
     with open(f'{work_folder}{csv_name}.csv', encoding='utf-8') as csvf:
         data = str(csvf.read())
     with open(f"{work_folder}{csv_name}v.csv", mode="w", encoding='utf-8') as w_file:
-        csv_writer = csv.writer(w_file, delimiter=",", lineterminator="\r")
-        for row in tqdm.tqdm(data.splitlines()):
+        csv_writer = csv.writer(w_file, delimiter=";", lineterminator="\r")
+        for i, row in enumerate(tqdm.tqdm(data.splitlines())):
             row = row.replace('"', '').replace('\n', '')
-            row = list(row.split(','))
-            if row[5] == '':
-                row[5] = randint(50, 100)
-            if row[6] == '':
-                row[6] = randint(100.0, 1000.0)
-            if row[7] == '':
-                row[7] = float(row[6]) * 1.35
-            csv_writer.writerow(row)
-    with open(f"{work_folder}{csv_name}v.csv", mode="r", encoding='utf-8') as v_file:
-        data = str(v_file.read())
-        for row in tqdm.tqdm(data.splitlines()):
-            row = list(row.split(','))
+            row = list(row.split(';'))
             row[0] = choice(months)
             row[1] = choice(years)
+            if row[5] == '':
+                log.warning(f"fixed row; row index - {i}")
+                row[5] = randint(50, 100)
+            if row[6] == '':
+                log.warning(f"fixed row; row index - {i}")
+                row[6] = randint(100.0, 1000.0)
+            if row[7] == '':
+                log.warning(f"fixed row; row index - {i}")
+                row[7] = float(row[6]) * 1.35
+            csv_writer.writerow(row)
+    return f'{work_folder}{csv_name}v.csv'
+
+def change_date(work_folder, csv_name):
+    with open(f'{work_folder}{csv_name}.csv', encoding='utf-8') as csvf:
+        data = str(csvf.read())
+    with open(f"{work_folder}{csv_name}v.csv", mode="w", encoding='utf-8') as w_file:
+        csv_writer = csv.writer(w_file, delimiter=";", lineterminator="\r")
+        for row in tqdm.tqdm(data.splitlines()):
+            row = list(row.split(';'))
+            row[0] = choice(months)
+            row[1] = choice(years)
+            csv_writer.writerow(row)
+
+
+def calculate(work_folder, csv_name):
+    products_sums_list = {tuple(['','']):''}
+    products_sums_list_help = {tuple(['','']):''}
+    with open(csv_name, mode="r", encoding='utf-8') as v_file:
+        data = str(v_file.read())
+        for row in tqdm.tqdm(data.splitlines()):
+            row = list(row.split(';'))
             for product, price in products_sums_list_help.items():
                 if row[3] != product:
                     products_sums_list.update({tuple([row[3], row[1]]):float(round((float(row[7])-float(row[6]))*int(row[5]), 2))})
@@ -122,60 +155,72 @@ def csv_from_excel(work_folder, csv_name):
         products_sums_list = dict(sorted(products_sums_list_new.items(), key=itemgetter(1), reverse=True))
         i = 1
         print()
-        print('Топ за всё время: ')
-        for key in products_sums_list:
-            print(f'{i}.{key[0]} -> {products_sums_list[key]}')
-            i += 1
-            if i > 10:
-                break
-        i = 1
-        print()
-        print('======================================')
-        print('Топ за 2017-ый год: ')
-        for k,v in products_sums_list.items():
-            if k[1] == 2017:
-                print(f'    {i}.{k[0]} -> {v}')
+        with open("results.txt", 'w', encoding= 'utf-8') as f:
+            f.write('Топ за всё время: \n')
+            print('Топ за всё время: ')
+            for key in products_sums_list:
+                f.write(f'{i}.{key[0]} -> {products_sums_list[key]}\n')
+                print(f'{i}.{key[0]} -> {products_sums_list[key]}')
                 i += 1
                 if i > 10:
                     break
-        i = 1
-        print()
-        print('Топ за 2018-ый год: ')
-        for k,v in products_sums_list.items():
-            if k[1] == 2018:
-                print(f'    {i}.{k[0]} -> {v}')
-                i += 1
-                if i > 10:
-                    break
-        i = 1
-        print()
-        print('Топ за 2019-ый год: ')
-        for k,v in products_sums_list.items():
-            if k[1] == 2019:
-                print(f'    {i}.{k[0]} -> {v}')
-                i += 1
-                if i > 10:
-                    break
-        i = 1
-        print()
-        print('Топ за 2020-ый год: ')
-        for k, v in products_sums_list.items():
-            if k[1] == 2020:
-                print(f'    {i}.{k[0]} -> {v}')
-                i += 1
-                if i > 10:
-                    break
-        i = 1
-        print()
-        print('Топ за 2021-ый год: ')
-        for k, v in products_sums_list.items():
-            if k[1] == 2021:
-                print(f'    {i}.{k[0]} -> {v}')
-                i += 1
-                if i > 10:
-                    break
-
-    return f'{work_folder}{csv_name}.csv'
+            i = 1
+            print()
+            f.write('\n======================================')
+            print('======================================')
+            f.write('\nТоп за 2017-ый год: \n')
+            print('Топ за 2017-ый год: ')
+            for k,v in products_sums_list.items():
+                if k[1] == '2017':
+                    f.write(f'    {i}.{k[0]} -> {v}\n')
+                    print(f'    {i}.{k[0]} -> {v}')
+                    i += 1
+                    if i > 10:
+                        break
+            i = 1
+            print()
+            f.write('\nТоп за 2018-ый год: \n')
+            print('Топ за 2018-ый год: ')
+            for k,v in products_sums_list.items():
+                if k[1] == '2018':
+                    f.write(f'    {i}.{k[0]} -> {v}\n')
+                    print(f'    {i}.{k[0]} -> {v}')
+                    i += 1
+                    if i > 10:
+                        break
+            i = 1
+            print()
+            f.write('\nТоп за 2019-ый год: \n')
+            print('Топ за 2019-ый год: ')
+            for k,v in products_sums_list.items():
+                if k[1] == '2019':
+                    f.write(f'    {i}.{k[0]} -> {v}\n')
+                    print(f'    {i}.{k[0]} -> {v}')
+                    i += 1
+                    if i > 10:
+                        break
+            i = 1
+            print()
+            f.write('\nТоп за 2020-ый год: \n')
+            print('Топ за 2020-ый год: ')
+            for k, v in products_sums_list.items():
+                if k[1] == '2020':
+                    f.write(f'    {i}.{k[0]} -> {v}\n')
+                    print(f'    {i}.{k[0]} -> {v}')
+                    i += 1
+                    if i > 10:
+                        break
+            i = 1
+            print()
+            f.write('\nТоп за 2021-ый год: \n')
+            print('Топ за 2021-ый год: ')
+            for k, v in products_sums_list.items():
+                if k[1] == '2021':
+                    f.write(f'    {i}.{k[0]} -> {v}\n')
+                    print(f'    {i}.{k[0]} -> {v}')
+                    i += 1
+                    if i > 10:
+                        break
 
 
 def homework1(csv_file):
@@ -185,10 +230,10 @@ def homework1(csv_file):
     summa = 0
     with open(csv_file, mode="r", encoding='utf-8') as r_file:
         data = str(r_file.read())
-        csv_writer = csv.writer(r_file, delimiter=",", lineterminator="\r")
+        csv_writer = csv.writer(r_file, delimiter=";", lineterminator="\r")
         for row in data.splitlines():
             row = row.replace('"', '').replace('\n', '')
-            row = list(row.split(','))
+            row = list(row.split(';'))
             for product, price in product_list_help.items():
                 if product != row[3]:
                     product_list.update({row[3]:row[7]})
@@ -207,10 +252,10 @@ def homework2(csv_file):
     max = 0
     with open(csv_file, mode="r", encoding='utf-8') as r_file:
         data = str(r_file.read())
-        csv_writer = csv.writer(r_file, delimiter=",", lineterminator="\r")
+        csv_writer = csv.writer(r_file, delimiter=";", lineterminator="\r")
         for row in data.splitlines():
             row = row.replace('"', '').replace('\n', '')
-            row = list(row.split(','))
+            row = list(row.split(';'))
             if row[4] in suppliers_products.keys():
                 suppliers_products.update({row[4]: suppliers_products.get(row[4]) + (row[3],)})
             if not row[4] in suppliers_products.keys():
@@ -226,14 +271,24 @@ def homework2(csv_file):
                 print(f'\t{supplier} -> {max}  товаров')
 
 
+clear_folder(work_folder)
+logfile = f'{work_folder}log_1.log'
+log = logging.getLogger("my_log")
+log.setLevel(logging.INFO)
+FH = logging.FileHandler(logfile, encoding='utf-8')
+basic_formater = logging.Formatter('%(asctime)s : [%(levelname)s] : %(message)s')
+FH.setFormatter(basic_formater)
+log.addHandler(FH)
 menu_results = menu()
-sleep(1)
-print("\n\033[37m {}".format(f'Короче делаем датасет на {menu_results.get("dataset_range")} строк,\n'
-                           f'а количество лет в датасете будет: {menu_results.get("year_range")} '))
-# date = datetime.datetime.now()
-# datestr = date.strftime("%Y%m%d%H%M%S")
-# clear_folder(work_folder)
-# csv_name = get_csv(xlsx_file, work_folder)
-# csv_namev = csv_from_excel(work_folder, csv_name)
-# homework1(csv_namev)
-# homework2(csv_namev)
+log.info(f"start programm with dataset range - {menu_results['dataset_range']}")
+date = datetime.datetime.now()
+datestr = date.strftime("%Y%m%d%H%M%S")
+csv_name = get_csv(xlsx_file, work_folder, logfile)
+generate_csv(menu_results, csv_name, work_folder)
+change_date(work_folder, csv_name)
+csv_namev = csv_from_excel(work_folder, csv_name)
+calculate(work_folder, csv_namev)
+homework1(csv_namev)
+homework2(csv_namev)
+logging.shutdown()
+os.rename(logfile, f'{csv_name}.log')
