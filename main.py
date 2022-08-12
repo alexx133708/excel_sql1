@@ -98,7 +98,7 @@ def generate_csv(menu_results, csv_name, work_folder):
                 csv_writer.writerow(row)
 
 
-def csv_from_excel(work_folder, csv_name):
+def csv_from_excel(work_folder, csv_name, log):
     log.info("cleaning csv")
     print("шлифую csv")
     with open(f'{work_folder}{csv_name}.csv', encoding='utf-8') as csvf:
@@ -123,11 +123,12 @@ def csv_from_excel(work_folder, csv_name):
     return f'{work_folder}{csv_name}v.csv'
 
 def change_date(work_folder, csv_name):
-    with open(f'{work_folder}{csv_name}.csv', encoding='utf-8') as csvf:
+    with open(f"{work_folder}{csv_name}.csv", encoding='utf-8') as csvf:
         data = str(csvf.read())
-    with open(f"{work_folder}{csv_name}v.csv", mode="w", encoding='utf-8') as w_file:
+    with open(f"{work_folder}{csv_name}.csv", mode="w", encoding='utf-8') as w_file:
         csv_writer = csv.writer(w_file, delimiter=";", lineterminator="\r")
         for row in tqdm.tqdm(data.splitlines()):
+            row = row.replace('"', '').replace('\n', '')
             row = list(row.split(';'))
             row[0] = choice(months)
             row[1] = choice(years)
@@ -136,6 +137,7 @@ def change_date(work_folder, csv_name):
 
 
 clear_folder(work_folder)
+
 logfile = f'{work_folder}log_1.log'
 log = logging.getLogger("my_log")
 log.setLevel(logging.INFO)
@@ -143,20 +145,21 @@ FH = logging.FileHandler(logfile, encoding='utf-8')
 basic_formater = logging.Formatter('%(asctime)s : [%(levelname)s] : %(message)s')
 FH.setFormatter(basic_formater)
 log.addHandler(FH)
+
 menu_results = menu()
 log.info(f"start programm with dataset range - {menu_results['dataset_range']}")
 date = datetime.datetime.now()
 datestr = date.strftime("%Y%m%d%H%M%S")
-csv_name = get_csv(xlsx_file, work_folder, logfile)
-date = datetime.datetime.now()
-datestr = date.strftime("%Y%m%d%H%M%S")
-#clear_folder("C:\\bigdata")
-csv_name = get_csv(xlsx_file, work_folder)
-csv_namev = csv_from_excel(work_folder, csv_name)
+csv_name = get_csv(xlsx_file, work_folder, log)
+change_date(work_folder, csv_name)
+generate_csv(menu_results, csv_name, work_folder)
+csv_namev = csv_from_excel(work_folder, csv_name, log)
 print("подключаюсь к sql")
 db_name = f"data{datestr}"
+date = datetime.datetime.now()
+datestr = date.strftime("%Y%m%d%H%M%S")
 conn = pyodbc.connect('Driver={SQL Server};'
-                      'Server=ASUSALEX\SQLEXPRESS;'
+                      'Server=WIN-5V0VN6G6SPV\SQLEXPRESS;'
                       'Database=python_sql;'
                       'Trusted_Connection=yes;')
 print("подключился")
@@ -174,22 +177,52 @@ cursor.execute(f'''
 			)                     
             ''')
 conn.commit()
-data = pd.read_csv(csv_namev, on_bad_lines='skip')
-df = pd.DataFrame(data)
-for row in tqdm.tqdm(df.itertuples()):
+with open(f'{work_folder}{csv_name}.csv', encoding='utf-8') as csvf:
+    data = csvf.read()
+for row in tqdm.tqdm(data.splitlines()):
+    row = list(row.split(';'))
     cursor.execute(f'''
                 INSERT INTO {db_name} (month, year, id, product_name, supplier_name,
                                       quantity_sold, purchase_price, retail_price)
                 VALUES (?,?,?,?,?,?,?,?)
                 ''',
+                   row[0],
                    row[1],
                    row[2],
                    row[3],
                    row[4],
                    row[5],
                    row[6],
-                   row[7],
-                   row[8],
+                   row[7]
                    )
 conn.commit()
+cursor.execute(f"UPDATE {db_name} SET quantity_sold = 20 WHERE quantity_sold = ''")
+cursor.execute(f"UPDATE {db_name} SET purchase_price = 150 WHERE purchase_price = ''")
+cursor.execute(f"UPDATE {db_name} SET retail_price = quantity_sold * 1.35 WHERE retail_price = ''")
+conn.commit()
+print(db_name)
+cursor.execute(f"SELECT TOP(1) G.[year], (SELECT SUM(([retail_price] - [purchase_price]) * [quantity_sold]) FROM {db_name} as O WHERE O.[year] = G.[year]) as profit FROM {db_name} as G ORDER BY [profit] DESC")
+result = cursor.fetchall()[0]
+print(f'самый прибыльный год - {result[0]} ({result[1]})')
+cursor.execute(f"SELECT TOP(1) G.[year], (SELECT SUM(([retail_price] - [purchase_price]) * [quantity_sold]) FROM {db_name} as O WHERE O.[year] = G.[year]) as profit FROM {db_name} as G ORDER BY [profit]")
+result = cursor.fetchall()[0]
+print(f'самый неприбыльный год - {result[0]} ({result[1]})')
+cursor.execute(f"SELECT DISTINCT G.[month], (SELECT SUM(([retail_price] - [purchase_price]) * [quantity_sold]) FROM {db_name} as O WHERE O.[month] = G.[month]) as profit FROM {db_name} as G ORDER BY [profit] DESC")
+result = cursor.fetchall()[0]
+print(f'самый прибыльный месяц - {result[0]} ({result[1]})')
+cursor.execute(f"SELECT DISTINCT G.[month], (SELECT SUM(([retail_price] - [purchase_price]) * [quantity_sold]) FROM {db_name} as O WHERE O.[month] = G.[month]) as profit FROM {db_name} as G ORDER BY [profit]")
+result = cursor.fetchall()[0]
+print(f'самый неприбыльный месяц - {result[0]} ({result[1]})')
+cursor.execute(f"SELECT DISTINCT G.[product_name], (SELECT SUM(([retail_price] - [purchase_price]) * [quantity_sold]) FROM {db_name} as O WHERE O.[product_name] = G.[product_name]) as profit FROM {db_name} as G ORDER BY [profit] DESC")
+result = cursor.fetchall()[0]
+print(f'самый прибыльный товар - {result[0]} ({result[1]})')
+cursor.execute(f"SELECT DISTINCT G.[product_name], (SELECT SUM(([retail_price] - [purchase_price]) * [quantity_sold]) FROM {db_name} as O WHERE O.[product_name] = G.[product_name]) as profit FROM {db_name} as G ORDER BY [profit]")
+result = cursor.fetchall()[0]
+print(f'самый неприбыльный товар - {result[0]} ({result[1]})')
+cursor.execute(f"SELECT DISTINCT G.[supplier_name], (SELECT SUM(([retail_price] - [purchase_price]) * [quantity_sold]) FROM {db_name} as O WHERE O.[supplier_name] = G.[supplier_name]) as profit FROM {db_name} as G ORDER BY [profit] DESC")
+result = cursor.fetchall()[0]
+print(f'самый прибыльный поставщик - {result[0]} ({result[1]})')
+cursor.execute(f"SELECT DISTINCT G.[supplier_name], (SELECT SUM(([retail_price] - [purchase_price]) * [quantity_sold]) FROM {db_name} as O WHERE O.[supplier_name] = G.[supplier_name]) as profit FROM {db_name} as G ORDER BY [profit]")
+result = cursor.fetchall()[0]
+print(f'самый неприбыльный поставщик - {result[0]} ({result[1]})')
 print('кукукукуку')
