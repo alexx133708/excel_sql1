@@ -11,10 +11,23 @@ from time import sleep
 import logging
 
 
-xlsx_file = "C:\\bigdata\\original\\bigdata2.xlsx"
-work_folder = "C:\\bigdata\\csv_files\\"
+xlsx_file = "E:\\bigdata\\original\\bigdata2.xlsx"
+work_folder = "E:\\bigdata\\csv_files\\"
+logfile = f'{work_folder}log_1.log'
 months = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 years = [2017, 2018, 2019, 2020, 2021]
+date = datetime.datetime.now()
+datestr = date.strftime("%Y%m%d%H%M%S")
+
+
+def init_log():
+    log = logging.getLogger("my_log")
+    log.setLevel(logging.INFO)
+    FH = logging.FileHandler(logfile, encoding='utf-8')
+    basic_formater = logging.Formatter('%(asctime)s : [%(levelname)s] : %(message)s')
+    FH.setFormatter(basic_formater)
+    log.addHandler(FH)
+    return log
 
 
 def menu():
@@ -73,8 +86,8 @@ def get_csv(xlsx_file, work_folder, logfile):
 
 
 def generate_csv(menu_results, csv_name, work_folder):
-    print("считаю")
-    log.info("calculating")
+    print("подгоняю датасет")
+    log.info("changing dataset range")
     with open(f'{work_folder}{csv_name}.csv', encoding='utf-8') as csvf:
         data = str(csvf.read())
     with open(f'{work_folder}{csv_name}.csv',mode="w", encoding='utf-8') as csvf:
@@ -122,7 +135,25 @@ def csv_from_excel(work_folder, csv_name, log):
             csv_writer.writerow(row)
     return f'{work_folder}{csv_name}v.csv'
 
-def change_date(work_folder, csv_name):
+
+def check_prices(csv_name, log):
+    log.info('checking prices')
+    with open(csv_name, encoding='utf-8') as csvf:
+        data = str(csvf.read())
+    with open(csv_name, mode="w", encoding='utf-8') as w_file:
+        csv_writer = csv.writer(w_file, delimiter=";", lineterminator="\r")
+        for row in tqdm.tqdm(data.splitlines()):
+            row = row.split(';')
+            helper = 0
+            if float(row[6]) > float(row[7]):
+                log.error(f'the purchase price is higher than the retail price {row[6]} > {row[7]}')
+                helper = row[6]
+                row[6] = row[7]
+                row[7] = helper
+            csv_writer.writerow(row)
+
+def change_date(work_folder, csv_name, log):
+    log.info('changing date')
     with open(f"{work_folder}{csv_name}.csv", encoding='utf-8') as csvf:
         data = str(csvf.read())
     with open(f"{work_folder}{csv_name}.csv", mode="w", encoding='utf-8') as w_file:
@@ -137,23 +168,15 @@ def change_date(work_folder, csv_name):
 
 
 clear_folder(work_folder)
-
-logfile = f'{work_folder}log_1.log'
-log = logging.getLogger("my_log")
-log.setLevel(logging.INFO)
-FH = logging.FileHandler(logfile, encoding='utf-8')
-basic_formater = logging.Formatter('%(asctime)s : [%(levelname)s] : %(message)s')
-FH.setFormatter(basic_formater)
-log.addHandler(FH)
-
+log = init_log()
 menu_results = menu()
 log.info(f"start programm with dataset range - {menu_results['dataset_range']}")
-date = datetime.datetime.now()
-datestr = date.strftime("%Y%m%d%H%M%S")
 csv_name = get_csv(xlsx_file, work_folder, log)
-change_date(work_folder, csv_name)
+change_date(work_folder, csv_name, log)
 generate_csv(menu_results, csv_name, work_folder)
 csv_namev = csv_from_excel(work_folder, csv_name, log)
+check_prices(csv_namev, log)
+log.info("connecting to sql")
 print("подключаюсь к sql")
 db_name = f"data{datestr}"
 date = datetime.datetime.now()
@@ -162,7 +185,9 @@ conn = pyodbc.connect('Driver={SQL Server};'
                       'Server=WIN-5V0VN6G6SPV\SQLEXPRESS;'
                       'Database=python_sql;'
                       'Trusted_Connection=yes;')
-print("подключился")
+print("подключился, создаю таблицу")
+log.info('connected to sql')
+log.info('createing table')
 cursor = conn.cursor()
 cursor.execute(f'''
 		CREATE TABLE {db_name} (
@@ -177,8 +202,12 @@ cursor.execute(f'''
 			)                     
             ''')
 conn.commit()
+log.info('table created')
+print('создал')
 with open(f'{work_folder}{csv_name}.csv', encoding='utf-8') as csvf:
     data = csvf.read()
+print('закидываю данные в таблицу')
+log.info('inserting data into table')
 for row in tqdm.tqdm(data.splitlines()):
     row = list(row.split(';'))
     cursor.execute(f'''
@@ -196,33 +225,42 @@ for row in tqdm.tqdm(data.splitlines()):
                    row[7]
                    )
 conn.commit()
-cursor.execute(f"UPDATE {db_name} SET quantity_sold = 20 WHERE quantity_sold = ''")
-cursor.execute(f"UPDATE {db_name} SET purchase_price = 150 WHERE purchase_price = ''")
+log.info('data was inserted')
+cursor.execute(f"UPDATE {db_name} SET quantity_sold = FLOOR(RAND()*(100))+1 WHERE quantity_sold = ''")
+cursor.execute(f"UPDATE {db_name} SET purchase_price = FLOOR(RAND()*(200))+1 WHERE purchase_price = ''")
 cursor.execute(f"UPDATE {db_name} SET retail_price = quantity_sold * 1.35 WHERE retail_price = ''")
 conn.commit()
 print(db_name)
+log.info('caluclating and printing results')
 cursor.execute(f"SELECT TOP(1) G.[year], (SELECT SUM(([retail_price] - [purchase_price]) * [quantity_sold]) FROM {db_name} as O WHERE O.[year] = G.[year]) as profit FROM {db_name} as G ORDER BY [profit] DESC")
 result = cursor.fetchall()[0]
-print(f'самый прибыльный год - {result[0]} ({result[1]})')
+print(f'самый прибыльный год - {result[0]} ({round(result[1], 2)}р)')
+log.info(f'most profit year - {result[0]} ({round(result[1], 2)}rub)')
 cursor.execute(f"SELECT TOP(1) G.[year], (SELECT SUM(([retail_price] - [purchase_price]) * [quantity_sold]) FROM {db_name} as O WHERE O.[year] = G.[year]) as profit FROM {db_name} as G ORDER BY [profit]")
 result = cursor.fetchall()[0]
-print(f'самый неприбыльный год - {result[0]} ({result[1]})')
+print(f'самый неприбыльный год - {result[0]} ({round(result[1], 2)}р)')
+log.info(f'most unprofit year - {result[0]} ({round(result[1], 2)}rub)')
 cursor.execute(f"SELECT DISTINCT G.[month], (SELECT SUM(([retail_price] - [purchase_price]) * [quantity_sold]) FROM {db_name} as O WHERE O.[month] = G.[month]) as profit FROM {db_name} as G ORDER BY [profit] DESC")
 result = cursor.fetchall()[0]
-print(f'самый прибыльный месяц - {result[0]} ({result[1]})')
+print(f'самый прибыльный месяц - {result[0]} ({round(result[1], 2)}р)')
+log.info(f'most profit month - {result[0]} ({round(result[1], 2)}rub)')
 cursor.execute(f"SELECT DISTINCT G.[month], (SELECT SUM(([retail_price] - [purchase_price]) * [quantity_sold]) FROM {db_name} as O WHERE O.[month] = G.[month]) as profit FROM {db_name} as G ORDER BY [profit]")
 result = cursor.fetchall()[0]
-print(f'самый неприбыльный месяц - {result[0]} ({result[1]})')
+print(f'самый неприбыльный месяц - {result[0]} ({round(result[1], 2)}р)')
+log.info(f'most unprofit month - {result[0]} ({round(result[1], 2)}rub)')
 cursor.execute(f"SELECT DISTINCT G.[product_name], (SELECT SUM(([retail_price] - [purchase_price]) * [quantity_sold]) FROM {db_name} as O WHERE O.[product_name] = G.[product_name]) as profit FROM {db_name} as G ORDER BY [profit] DESC")
 result = cursor.fetchall()[0]
-print(f'самый прибыльный товар - {result[0]} ({result[1]})')
+print(f'самый прибыльный товар - {result[0]} ({round(result[1], 2)}р)')
+log.info(f'most profit product - {result[0]} ({round(result[1], 2)}rub)')
 cursor.execute(f"SELECT DISTINCT G.[product_name], (SELECT SUM(([retail_price] - [purchase_price]) * [quantity_sold]) FROM {db_name} as O WHERE O.[product_name] = G.[product_name]) as profit FROM {db_name} as G ORDER BY [profit]")
 result = cursor.fetchall()[0]
-print(f'самый неприбыльный товар - {result[0]} ({result[1]})')
+print(f'самый неприбыльный товар - {result[0]} ({round(result[1], 2)}р)')
+log.info(f'most unprofit product - {result[0]} ({round(result[1], 2)}rub)')
 cursor.execute(f"SELECT DISTINCT G.[supplier_name], (SELECT SUM(([retail_price] - [purchase_price]) * [quantity_sold]) FROM {db_name} as O WHERE O.[supplier_name] = G.[supplier_name]) as profit FROM {db_name} as G ORDER BY [profit] DESC")
 result = cursor.fetchall()[0]
-print(f'самый прибыльный поставщик - {result[0]} ({result[1]})')
+print(f'самый прибыльный поставщик - {result[0]} ({round(result[1], 2)}р)')
+log.info(f'most profit supplier - {result[0]} ({round(result[1], 2)}rub)')
 cursor.execute(f"SELECT DISTINCT G.[supplier_name], (SELECT SUM(([retail_price] - [purchase_price]) * [quantity_sold]) FROM {db_name} as O WHERE O.[supplier_name] = G.[supplier_name]) as profit FROM {db_name} as G ORDER BY [profit]")
 result = cursor.fetchall()[0]
-print(f'самый неприбыльный поставщик - {result[0]} ({result[1]})')
-print('кукукукуку')
+print(f'самый неприбыльный поставщик - {result[0]} ({round(result[1], 2)}р)')
+log.info(f'most unprofit supplier - {result[0]} ({round(result[1], 2)}rub)')
