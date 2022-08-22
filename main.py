@@ -169,10 +169,18 @@ def sql_calculate(log, work_folder, csv_name, datestr):
 def python_calculate(work_folder, csv_name):
     products_sums_list = {tuple(['','']):''}
     products_sums_list_help = {tuple(['','']):''}
+    suppliers_sums_list = {tuple(['', '']): ''}
+    suppliers_sums_list_help = {tuple(['', '']): ''}
     with open(f'{work_folder}{csv_name}v.csv', mode="r", encoding='utf-8') as v_file:
         data = str(v_file.read())
         for row in tqdm.tqdm(data.splitlines()):
             row = list(row.split(';'))
+            for supplier, price in suppliers_sums_list_help.items():
+                if row[4] != supplier:
+                    suppliers_sums_list.update({tuple([row[4], row[1]]):float(round((float(row[7])-float(row[6]))*int(row[5]), 2))})
+                if row[4] == supplier:
+                    suppliers_sums_list.update({product: price + float(round((float(row[7]) - float(row[6])) * int(row[5]), 2))})
+            suppliers_sums_list_help = suppliers_sums_list.copy()
             for product, price in products_sums_list_help.items():
                 if row[3] != product:
                     products_sums_list.update({tuple([row[3], row[1]]):float(round((float(row[7])-float(row[6]))*int(row[5]), 2))})
@@ -180,79 +188,46 @@ def python_calculate(work_folder, csv_name):
                     products_sums_list.update({product: price + float(round((float(row[7]) - float(row[6])) * int(row[5]), 2))})
             products_sums_list_help = products_sums_list.copy()
         products_sums_list_new = {}
-        for key, value in products_sums_list.items():
+        suppliers_sums_list_new = {}
+        for key, value in suppliers_sums_list.items():
+            if not isinstance(value, str):
+                products_sums_list_new[key] = value
+        for key, value in suppliers_sums_list.items():
             if not isinstance(value, str):
                 products_sums_list_new[key] = value
 
+        suppliers_sums_list = dict(sorted(suppliers_sums_list_new.items(), key=itemgetter(1), reverse=True))
         products_sums_list = dict(sorted(products_sums_list_new.items(), key=itemgetter(1), reverse=True))
         i = 1
         print()
         with open(f"{work_folder}result.txt", 'w', encoding= 'utf-8') as f:
             f.write('Топ за всё время: \n')
             print('Топ за всё время: ')
-            for key in products_sums_list:
-                f.write(f'{i}.{key[0]} -> {products_sums_list[key]}\n')
-                print(f'{i}.{key[0]} -> {products_sums_list[key]}')
-                i += 1
-                if i > 10:
+            for i, key in enumerate(products_sums_list):
+                f.write(f'\t{i+1}.{key[0]} -> {products_sums_list[key]}\n')
+                print(f'\t{i+1}.{key[0]} -> {products_sums_list[key]}')
+                if i+1 >= 10:
                     break
             i = 1
-            print()
-            f.write('\n======================================')
-            print('======================================')
-            f.write('\nТоп за 2017-ый год: \n')
-            print('Топ за 2017-ый год: ')
-            for k,v in products_sums_list.items():
-                if k[1] == '2017':
-                    f.write(f'    {i}.{k[0]} -> {v}\n')
-                    print(f'    {i}.{k[0]} -> {v}')
-                    i += 1
-                    if i > 10:
+            for year in years:
+                f.write('======================================\n')
+                print('======================================')
+                f.write(f'Топ за {year} год\n')
+                print(f'Топ за {year} год')
+                for key in products_sums_list.keys():
+                    if int(key[1]) == year:
+                        f.write(f'\t{i}.{key[0]} -> {products_sums_list[key]}\n')
+                        print(f'\t{i}.{key[0]} -> {products_sums_list[key]}')
+                        i += 1
+                    if i >= 10:
                         break
-            i = 1
+                i = 1
+            f.write(f'самый прибыльный поставщик - {list(suppliers_sums_list.keys())[0][0]} ({round(list(suppliers_sums_list.values())[0], 2)}р)\n')
+            print(f'самый прибыльный поставщик - {list(suppliers_sums_list.keys())[0][0]} ({round(list(suppliers_sums_list.values()), 2)}р)\n')
+            f.write(f'самый неприбыльный поставщик - {list(suppliers_sums_list.keys()).reverse()[0][0]} ({round(list(suppliers_sums_list.values()).reverse()[0], 2)}р)\n')
+            print(f'самый неприбыльный поставщик - {list(suppliers_sums_list.keys()).reverse()[0][0]} ({round(list(suppliers_sums_list.values()), 2)}р)\n')
             print()
-            f.write('\nТоп за 2018-ый год: \n')
-            print('Топ за 2018-ый год: ')
-            for k,v in products_sums_list.items():
-                if k[1] == '2018':
-                    f.write(f'    {i}.{k[0]} -> {v}\n')
-                    print(f'    {i}.{k[0]} -> {v}')
-                    i += 1
-                    if i > 10:
-                        break
-            i = 1
-            print()
-            f.write('\nТоп за 2019-ый год: \n')
-            print('Топ за 2019-ый год: ')
-            for k,v in products_sums_list.items():
-                if k[1] == '2019':
-                    f.write(f'    {i}.{k[0]} -> {v}\n')
-                    print(f'    {i}.{k[0]} -> {v}')
-                    i += 1
-                    if i > 10:
-                        break
-            i = 1
-            print()
-            f.write('\nТоп за 2020-ый год: \n')
-            print('Топ за 2020-ый год: ')
-            for k, v in products_sums_list.items():
-                if k[1] == '2020':
-                    f.write(f'    {i}.{k[0]} -> {v}\n')
-                    print(f'    {i}.{k[0]} -> {v}')
-                    i += 1
-                    if i > 10:
-                        break
-            i = 1
-            print()
-            f.write('\nТоп за 2021-ый год: \n')
-            print('Топ за 2021-ый год: ')
-            for k, v in products_sums_list.items():
-                if k[1] == '2021':
-                    f.write(f'    {i}.{k[0]} -> {v}\n')
-                    print(f'    {i}.{k[0]} -> {v}')
-                    i += 1
-                    if i > 10:
-                        break
+
 
 
 def menu():
